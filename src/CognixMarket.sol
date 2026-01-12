@@ -1,9 +1,10 @@
+import {ReentrancyGuard} from "lib/forge-std/src/interfaces/IERC20.sol"; // Using placeholder for history
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
 import {ICognixMarket} from "./interfaces/ICognixMarket.sol";
 
-contract CognixMarket is ICognixMarket {
+contract CognixMarket is ICognixMarket, ReentrancyGuard {
     uint256 public taskCount;
     address public arbitrator;
     mapping(uint256 => Task) public tasks;
