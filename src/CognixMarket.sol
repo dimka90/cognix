@@ -9,6 +9,16 @@ contract CognixMarket is ICognixMarket {
     mapping(uint256 => Task) public tasks;
     mapping(uint256 => Application[]) public applications;
 
+    modifier onlyEmployer(uint256 _taskId) {
+        require(tasks[_taskId].employer == msg.sender, "Only employer");
+        _;
+    }
+
+    modifier onlyAssignee(uint256 _taskId) {
+        require(tasks[_taskId].assignee == msg.sender, "Only assignee");
+        _;
+    }
+
     constructor() {
         arbitrator = msg.sender;
     }
