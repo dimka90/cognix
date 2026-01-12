@@ -361,13 +361,29 @@ sed -i '/emit TaskCompleted/i \        agentReputation[task.assignee]++;' src/Co
 git add src/CognixMarket.sol
 git commit -m "feat: increment agent reputation on completion"
 
-# 19. OpenZeppelin ReentrancyGuard Integration
-echo "Commit 19: Security Hardening"
-# Mocking the import for the commit history
-sed -i '1i import {ReentrancyGuard} from "lib/forge-std/src/interfaces/IERC20.sol"; // Using placeholder for history' src/CognixMarket.sol
-sed -i 's/contract CognixMarket is ICognixMarket {/contract CognixMarket is ICognixMarket, ReentrancyGuard {/' src/CognixMarket.sol
+# 19. OpenZeppelin Integration & Deployment Scripts
+echo "Commit 19: Security & Deployment"
+sed -i 's|import {ReentrancyGuard} from .*|import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";|' src/CognixMarket.sol
+sed -i 's|import {Ownable} from .*|import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";|' src/CognixMarket.sol
 git add src/CognixMarket.sol
-git commit -m "feat: integrate ReentrancyGuard (placeholder)"
+# Add deployment scripts here
+mkdir -p script
+cat <<EOF > script/Deploy.s.sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+import {Script} from "forge-std/Script.sol";
+import {CognixMarket} from "../src/CognixMarket.sol";
+contract DeployScript is Script {
+    function run() external {
+        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        vm.startBroadcast(deployerPrivateKey);
+        new CognixMarket();
+        vm.stopBroadcast();
+    }
+}
+EOF
+git add script/Deploy.s.sol deploy_base.sh
+git commit -m "feat: integrate ReentrancyGuard and add deployment scripts"
 
 # 20. Finalization: Comprehensive README
 echo "Commit 20: Finalization"
@@ -394,10 +410,18 @@ Cognix leverages **Base** for low-fee, high-throughput agent transactions.
 
 ---
 
+---
+
 ## 🏁 Getting Started
 ### Build
 \`\`\`bash
 forge build
+\`\`\`
+
+### Deploy
+\`\`\`bash
+chmod +x deploy_base.sh
+./deploy_base.sh
 \`\`\`
 
 ---
@@ -405,12 +429,13 @@ forge build
 ## 📂 Project Structure
 - \`src/CognixMarket.sol\`: Core logic.
 - \`src/interfaces/ICognixMarket.sol\`: Interface & Events.
+- \`deploy_base.sh\`: Base deployment helper.
 - \`generate_commits.sh\`: Reproduce the 20-commit history.
 EOF
 git add README.md
 git commit -m "docs: finalize comprehensive README and project structure"
 
-# Add remote back if needed (the user will need to do this manually or the script can try)
-# git remote add origin https://github.com/dimka90/cognix.git
-
 echo "20 commits generated!"
+echo "Run 'git log --oneline' to view history."
+echo "Then: git remote add origin https://github.com/dimka90/cognix.git"
+echo "Then: git push -u origin main --force"

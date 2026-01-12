@@ -2,8 +2,8 @@
 pragma solidity ^0.8.19;
 
 import {ICognixMarket} from "./interfaces/ICognixMarket.sol";
-import {ReentrancyGuard} from "forge-std/../lib/openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
-import {Ownable} from "forge-std/../lib/openzeppelin-contracts/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title CognixMarket

@@ -25,10 +25,15 @@ interface ICognixMarket {
     event TaskAssigned(uint256 indexed taskId, address indexed assignee);
     event ProofSubmitted(uint256 indexed taskId, string proofURI);
     event TaskCompleted(uint256 indexed taskId);
+    event TaskCancelled(uint256 indexed taskId);
+    event DisputeRaised(uint256 indexed taskId, address indexed raiser);
+    event DisputeResolved(uint256 indexed taskId, bool completed);
 
     function createTask(string calldata _metadataURI) external payable returns (uint256);
     function applyForTask(uint256 _taskId, string calldata _proposalURI) external;
     function assignTask(uint256 _taskId, address _assignee) external;
     function submitProof(uint256 _taskId, string calldata _proofURI) external;
     function completeTask(uint256 _taskId) external;
+    function cancelTask(uint256 _taskId) external;
+    function disputeTask(uint256 _taskId) external;
 }
