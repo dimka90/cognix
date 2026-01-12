@@ -20,6 +20,10 @@ interface ICognixMarket {
         uint256 appliedAt;
     }
 
+    event TaskCreated(uint256 indexed taskId, address indexed employer, uint256 reward, string metadataURI);
+    event TaskApplied(uint256 indexed taskId, address indexed agent, string proposalURI);
+    event TaskAssigned(uint256 indexed taskId, address indexed assignee);
+
     function createTask(string calldata _metadataURI) external payable returns (uint256);
     function applyForTask(uint256 _taskId, string calldata _proposalURI) external;
     function assignTask(uint256 _taskId, address _assignee) external;
