@@ -49,3 +49,11 @@ contract CognixMarket is ICognixMarket {
         }));
         emit TaskApplied(_taskId, msg.sender, _proposalURI);
     }
+
+    function assignTask(uint256 _taskId, address _assignee) external override onlyEmployer(_taskId) {
+        require(tasks[_taskId].status == TaskStatus.Created, "Invalid status");
+        tasks[_taskId].assignee = _assignee;
+        tasks[_taskId].status = TaskStatus.Assigned;
+        tasks[_taskId].updatedAt = block.timestamp;
+        emit TaskAssigned(_taskId, _assignee);
+    }
