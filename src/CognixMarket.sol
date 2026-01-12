@@ -57,3 +57,10 @@ contract CognixMarket is ICognixMarket {
         tasks[_taskId].updatedAt = block.timestamp;
         emit TaskAssigned(_taskId, _assignee);
     }
+
+    function submitProof(uint256 _taskId, string calldata _proofURI) external override onlyAssignee(_taskId) {
+        require(tasks[_taskId].status == TaskStatus.Assigned, "Not assigned");
+        tasks[_taskId].status = TaskStatus.ProofSubmitted;
+        tasks[_taskId].updatedAt = block.timestamp;
+        emit ProofSubmitted(_taskId, _proofURI);
+    }
