@@ -7,6 +7,7 @@ contract CognixMarket is ICognixMarket {
     uint256 public taskCount;
     address public arbitrator;
     mapping(uint256 => Task) public tasks;
+    mapping(uint256 => Application[]) public applications;
 
     constructor() {
         arbitrator = msg.sender;
