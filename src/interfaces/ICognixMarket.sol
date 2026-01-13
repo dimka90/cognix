@@ -7,11 +7,18 @@ interface ICognixMarket {
     struct Task {
         address employer;
         address assignee;
-        address token; // address(0) for ETH
+        address token;
         string metadataURI;
         uint256 reward;
         TaskStatus status;
         uint256 createdAt;
         uint256 updatedAt;
+    }
+
+    struct Application {
+        address agent;
+        string proposalURI;
+        uint256 stakedAmount;
+        uint256 appliedAt;
     }
 }
