@@ -228,3 +228,36 @@ contract CognixToken {
         }
     }
 }
+    // Ownership management functions
+    
+    /**
+     * @dev Transfers ownership of the contract to a new account (newOwner)
+     * Can only be called by the current owner
+     * @param newOwner The address of the new owner
+     */
+    function transferOwnership(address newOwner) public onlyOwner {
+        if (newOwner == address(0)) {
+            revert InvalidAddress(newOwner);
+        }
+        _transferOwnership(newOwner);
+    }
+    
+    /**
+     * @dev Leaves the contract without owner. It will not be possible to call
+     * onlyOwner functions anymore. Can only be called by the current owner
+     */
+    function renounceOwnership() public onlyOwner {
+        _transferOwnership(address(0));
+    }
+    
+    /**
+     * @dev Transfers ownership of the contract to a new account (newOwner)
+     * Internal function without access restriction
+     * @param newOwner The address of the new owner
+     */
+    function _transferOwnership(address newOwner) internal {
+        address oldOwner = _owner;
+        _owner = newOwner;
+        emit OwnershipTransferred(oldOwner, newOwner);
+    }
+}
