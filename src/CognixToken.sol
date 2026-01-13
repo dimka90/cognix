@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
 /**
  * @title CognixToken
  * @dev Implementation of the ERC20 Token Standard with additional features
@@ -22,6 +25,8 @@ pragma solidity ^0.8.19;
  * 
  * @notice This token follows the ERC20 standard with additional administrative features
  * @notice Max supply is capped at 1,000,000,000 tokens (1 billion)
+ * @custom:version 1.0.0
+ * @custom:security-contact security@cognix.io
  */
 contract CognixToken {
     // Token metadata
