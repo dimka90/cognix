@@ -32,3 +32,18 @@ contract CognixMarket is ICognixMarket, ReentrancyGuard, Ownable {
         return taskId;
     }
 }
+
+    function createTaskWithToken(address _token, uint256 _amount, string calldata _metadataURI) 
+        external 
+        override 
+        returns (uint256) 
+    {
+        require(whitelistedTokens[_token], "Token not whitelisted");
+        require(_amount > 0, "Amount must be > 0");
+        IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
+        uint256 taskId = ++taskCount;
+        tasks[taskId] = Task(msg.sender, address(0), _token, _metadataURI, _amount, TaskStatus.Created, block.timestamp, block.timestamp);
+        emit TaskCreated(taskId, msg.sender, _token, _amount, _metadataURI);
+        return taskId;
+    }
+}
