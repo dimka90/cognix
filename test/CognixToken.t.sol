@@ -243,3 +243,193 @@ contract CognixTokenTest is Test {
         assertEq(token.allowance(owner, bob), allowance2);
         assertEq(token.allowance(alice, bob), 0);
     }
+    
+    // Minting function tests
+    
+    function test_Mint_Success() public {
+        uint256 mintAmount = 10000 * 10**18;
+        uint256 initialSupply = token.totalSupply();
+        
+        vm.expectEmit(true, true, false, true);
+        emit Transfer(address(0), alice, mintAmount);
+        
+        _mintTokens(alice, mintAmount);
+        
+        assertEq(token.balanceOf(alice), mintAmount);
+        assertEq(token.totalSupply(), initialSupply + mintAmount);
+    }
+    
+    function test_Mint_OnlyOwner() public {
+        uint256 mintAmount = 10000 * 10**18;
+        
+        vm.expectRevert(
+            abi.encodeWithSelector(CognixToken.UnauthorizedAccess.selector, alice, owner)
+        );
+        vm.prank(alice);
+        token.mint(bob, mintAmount);
+    }
+    
+    function test_Mint_ToZeroAddress() public {
+        uint256 mintAmount = 10000 * 10**18;
+        
+        vm.expectRevert(
+            abi.encodeWithSelector(CognixToken.InvalidAddress.selector, address(0))
+        );
+        vm.prank(owner);
+        token.mint(address(0), mintAmount);
+    }
+    
+    function test_Mint_MaxSupplyExceeded() public {
+        uint256 exceedingAmount = MAX_SUPPLY - INITIAL_SUPPLY + 1;
+        
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CognixToken.MaxSupplyExceeded.selector,
+                INITIAL_SUPPLY + exceedingAmount,
+                MAX_SUPPLY
+            )
+        );
+        _mintTokens(alice, exceedingAmount);
+    }
+    
+    function test_Mint_ZeroAmount() public {
+        uint256 initialSupply = token.totalSupply();
+        uint256 initialBalance = token.balanceOf(alice);
+        
+        vm.expectEmit(true, true, false, true);
+        emit Transfer(address(0), alice, 0);
+        
+        _mintTokens(alice, 0);
+        
+        assertEq(token.balanceOf(alice), initialBalance);
+        assertEq(token.totalSupply(), initialSupply);
+    }
+    
+    // Burning function tests
+    
+    function test_Burn_Success() public {
+        uint256 burnAmount = 5000 * 10**18;
+        uint256 initialSupply = token.totalSupply();
+        
+        vm.expectEmit(true, true, false, true);
+        emit Transfer(owner, address(0), burnAmount);
+        
+        _burnTokens(owner, burnAmount);
+        
+        assertEq(token.balanceOf(owner), INITIAL_SUPPLY - burnAmount);
+        assertEq(token.totalSupply(), initialSupply - burnAmount);
+    }
+    
+    function test_Burn_InsufficientBalance() public {
+        uint256 burnAmount = 1000 * 10**18;
+        
+        vm.expectRevert(
+            abi.encodeWithSelector(CognixToken.InsufficientBalance.selector, 0, burnAmount)
+        );
+        _burnTokens(alice, burnAmount);
+    }
+    
+    function test_Burn_ZeroAmount() public {
+        uint256 initialSupply = token.totalSupply();
+        uint256 initialBalance = token.balanceOf(owner);
+        
+        vm.expectEmit(true, true, false, true);
+        emit Transfer(owner, address(0), 0);
+        
+        _burnTokens(owner, 0);
+        
+        assertEq(token.balanceOf(owner), initialBalance);
+        assertEq(token.totalSupply(), initialSupply);
+    }
+    
+    function test_BurnFrom_Success() public {
+        uint256 approvalAmount = 10000 * 10**18;
+        uint256 burnAmount = 5000 * 10**18;
+        uint256 initialSupply = token.totalSupply();
+        
+        _approveTokens(owner, alice, approvalAmount);
+        
+        vm.expectEmit(true, true, false, true);
+        emit Transfer(owner, address(0), burnAmount);
+        
+        _burnFromTokens(alice, owner, burnAmount);
+        
+        assertEq(token.balanceOf(owner), INITIAL_SUPPLY - burnAmount);
+        assertEq(token.totalSupply(), initialSupply - burnAmount);
+        assertEq(token.allowance(owner, alice), approvalAmount - burnAmount);
+    }
+    
+    function test_BurnFrom_InsufficientAllowance() public {
+        uint256 approvalAmount = 1000 * 10**18;
+        uint256 burnAmount = 2000 * 10**18;
+        
+        _approveTokens(owner, alice, approvalAmount);
+        
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CognixToken.InsufficientAllowance.selector,
+                approvalAmount,
+                burnAmount
+            )
+        );
+        _burnFromTokens(alice, owner, burnAmount);
+    }
+    
+    // Ownership function tests
+    
+    function test_TransferOwnership_Success() public {
+        vm.expectEmit(true, true, false, true);
+        emit OwnershipTransferred(owner, alice);
+        
+        vm.prank(owner);
+        token.transferOwnership(alice);
+        
+        assertEq(token.owner(), alice);
+        assertTrue(token.hasOwner());
+    }
+    
+    function test_TransferOwnership_OnlyOwner() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(CognixToken.UnauthorizedAccess.selector, alice, owner)
+        );
+        vm.prank(alice);
+        token.transferOwnership(bob);
+    }
+    
+    function test_TransferOwnership_ToZeroAddress() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(CognixToken.InvalidAddress.selector, address(0))
+        );
+        vm.prank(owner);
+        token.transferOwnership(address(0));
+    }
+    
+    function test_RenounceOwnership_Success() public {
+        vm.expectEmit(true, true, false, true);
+        emit OwnershipTransferred(owner, address(0));
+        
+        vm.prank(owner);
+        token.renounceOwnership();
+        
+        assertEq(token.owner(), address(0));
+        assertFalse(token.hasOwner());
+    }
+    
+    function test_RenounceOwnership_OnlyOwner() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(CognixToken.UnauthorizedAccess.selector, alice, owner)
+        );
+        vm.prank(alice);
+        token.renounceOwnership();
+    }
+    
+    function test_AdminFunctions_AfterRenounceOwnership() public {
+        vm.prank(owner);
+        token.renounceOwnership();
+        
+        vm.expectRevert(
+            abi.encodeWithSelector(CognixToken.UnauthorizedAccess.selector, owner, address(0))
+        );
+        vm.prank(owner);
+        token.mint(alice, 1000 * 10**18);
+    }
