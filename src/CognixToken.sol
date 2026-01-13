@@ -261,3 +261,35 @@ contract CognixToken {
         emit OwnershipTransferred(oldOwner, newOwner);
     }
 }
+    // Minting functionality
+    
+    /**
+     * @dev Creates amount tokens and assigns them to to, increasing the total supply
+     * Can only be called by the owner
+     * @param to The address that will receive the minted tokens
+     * @param amount The amount of tokens to mint
+     */
+    function mint(address to, uint256 amount) public onlyOwner {
+        _mint(to, amount);
+    }
+    
+    /**
+     * @dev Creates amount tokens and assigns them to account, increasing the total supply
+     * @param account The address that will receive the minted tokens
+     * @param amount The amount of tokens to mint
+     */
+    function _mint(address account, uint256 amount) internal {
+        if (account == address(0)) {
+            revert InvalidAddress(account);
+        }
+        
+        _totalSupply += amount;
+        unchecked {
+            // Overflow not possible: balance + amount is at most totalSupply + amount
+            // which is checked above.
+            _balances[account] += amount;
+        }
+        
+        emit Transfer(address(0), account, amount);
+    }
+}
