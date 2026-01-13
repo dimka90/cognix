@@ -3,8 +3,25 @@ pragma solidity ^0.8.19;
 
 /**
  * @title CognixToken
- * @dev Implementation of the ERC20 Token Standard
+ * @dev Implementation of the ERC20 Token Standard with additional features
  * @author Cognix Team
+ * 
+ * This contract implements a comprehensive ERC20 token with the following features:
+ * - Standard ERC20 functionality (transfer, approve, transferFrom)
+ * - Minting capability (owner only, up to max supply)
+ * - Burning capability (token holders and allowance-based)
+ * - Ownership management with transfer and renunciation
+ * - Gas-efficient custom errors
+ * - Comprehensive input validation
+ * 
+ * Security Features:
+ * - Maximum supply cap of 1 billion tokens
+ * - Owner-only administrative functions
+ * - Zero address validation
+ * - Overflow protection with unchecked arithmetic where safe
+ * 
+ * @notice This token follows the ERC20 standard with additional administrative features
+ * @notice Max supply is capped at 1,000,000,000 tokens (1 billion)
  */
 contract CognixToken {
     // Token metadata
@@ -38,10 +55,21 @@ contract CognixToken {
     
     /**
      * @dev Constructor that sets the token name, symbol, and initial supply
-     * @param name_ The name of the token
-     * @param symbol_ The symbol of the token
-     * @param initialSupply_ The initial supply of tokens (in wei units)
-     * @param owner_ The initial owner of the contract
+     * @param name_ The name of the token (e.g., "Cognix Token")
+     * @param symbol_ The symbol of the token (e.g., "CGX")
+     * @param initialSupply_ The initial supply of tokens in wei units (e.g., 1000000 * 10**18)
+     * @param owner_ The initial owner of the contract who can mint tokens
+     * 
+     * Requirements:
+     * - `owner_` cannot be the zero address
+     * - `initialSupply_` must not exceed MAX_SUPPLY
+     * 
+     * Effects:
+     * - Sets token metadata (name, symbol, decimals)
+     * - Assigns initial supply to owner if > 0
+     * - Sets contract owner
+     * - Emits Transfer event for initial supply (if any)
+     * - Emits OwnershipTransferred event
      */
     constructor(
         string memory name_,
