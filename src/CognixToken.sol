@@ -31,7 +31,11 @@ contract CognixToken {
         emit Transfer(address(0), _owner, _supply);
     }
     
-    function transfer(address to, uint256 amount) external returns (bool) {
+    /// @notice Transfers tokens to a recipient
+    /// @param to Recipient address
+    /// @param amount Amount to transfer
+    /// @return success True if transfer succeeded
+    function transfer(address to, uint256 amount) external returns (bool success) {
         require(to != address(0), "Invalid recipient");
         require(balanceOf[msg.sender] >= amount, "Insufficient balance");
         
