@@ -23,6 +23,7 @@ contract CognixToken {
     /// @param _supply Initial token supply
     /// @param _owner Address to receive initial supply
     constructor(string memory _name, string memory _symbol, uint256 _supply, address _owner) {
+        require(_owner != address(0), "Invalid owner address");
         name = _name;
         symbol = _symbol;
         totalSupply = _supply;
