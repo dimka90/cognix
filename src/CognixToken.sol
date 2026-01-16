@@ -37,9 +37,13 @@ contract CognixToken {
     /// @return success True if transfer succeeded
     function transfer(address to, uint256 amount) external returns (bool success) {
         require(to != address(0), "Transfer to zero address");
-        require(balanceOf[msg.sender] >= amount, "Insufficient balance");
         
-        balanceOf[msg.sender] -= amount;
+        uint256 senderBalance = balanceOf[msg.sender];
+        require(senderBalance >= amount, "Insufficient balance");
+        
+        unchecked {
+            balanceOf[msg.sender] = senderBalance - amount;
+        }
         balanceOf[to] += amount;
         
         emit Transfer(msg.sender, to, amount);
