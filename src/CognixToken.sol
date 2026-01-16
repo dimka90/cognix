@@ -14,6 +14,7 @@ contract CognixToken {
     
     /// @notice Emitted when tokens are transferred
     event Transfer(address indexed from, address indexed to, uint256 value);
+    /// @notice Emitted when an approval is granted
     event Approval(address indexed owner, address indexed spender, uint256 value);
     
     constructor(string memory _name, string memory _symbol, uint256 _supply, address _owner) {
