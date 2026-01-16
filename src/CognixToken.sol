@@ -51,7 +51,7 @@ contract CognixToken {
     /// @param amount Amount approved for spending
     /// @return success True if approval succeeded
     function approve(address spender, uint256 amount) external returns (bool success) {
-        require(spender != address(0), "Invalid spender");
+        require(spender != address(0), "Approve to zero address");
         
         allowance[msg.sender][spender] = amount;
         emit Approval(msg.sender, spender, amount);
