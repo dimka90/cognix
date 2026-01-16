@@ -58,7 +58,12 @@ contract CognixToken {
         return true;
     }
     
-    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+    /// @notice Transfers tokens from one address to another using allowance
+    /// @param from Address to transfer from
+    /// @param to Address to transfer to
+    /// @param amount Amount to transfer
+    /// @return success True if transfer succeeded
+    function transferFrom(address from, address to, uint256 amount) external returns (bool success) {
         require(to != address(0), "Invalid recipient");
         require(balanceOf[from] >= amount, "Insufficient balance");
         require(allowance[from][msg.sender] >= amount, "Insufficient allowance");
