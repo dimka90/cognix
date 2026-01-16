@@ -17,6 +17,11 @@ contract CognixToken {
     /// @notice Emitted when an approval is granted
     event Approval(address indexed owner, address indexed spender, uint256 value);
     
+    /// @notice Creates a new Cognix Token
+    /// @param _name Token name
+    /// @param _symbol Token symbol
+    /// @param _supply Initial token supply
+    /// @param _owner Address to receive initial supply
     constructor(string memory _name, string memory _symbol, uint256 _supply, address _owner) {
         name = _name;
         symbol = _symbol;
