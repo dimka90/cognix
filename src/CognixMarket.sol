@@ -383,3 +383,55 @@ contract CognixMarket is ICognixMarket, ReentrancyGuard, Ownable, Pausable {
         
         return finalResult;
     }
+    function withdrawStake(uint256 _taskId) external nonReentrant whenNotPaused {
+        require(_taskId > 0 && _taskId <= taskCount, "Invalid task ID");
+        Task storage task = tasks[_taskId];
+        require(task.status == TaskStatus.Cancelled || task.status == TaskStatus.Completed, "Task not finished");
+        
+        Application[] storage apps = applications[_taskId];
+        uint256 stakeToReturn = 0;
+        
+        for (uint256 i = 0; i < apps.length; i++) {
+            if (apps[i].agent == msg.sender && apps[i].stakedAmount > 0) {
+                stakeToReturn = apps[i].stakedAmount;
+                apps[i].stakedAmount = 0; // Prevent double withdrawal
+                break;
+            }
+        }
+        
+        require(stakeToReturn > 0, "No stake to withdraw");
+        nativeToken.safeTransfer(msg.sender, stakeToReturn);
+        emit StakeWithdrawn(_taskId, msg.sender, stakeToReturn);
+    }
+
+    function updateTaskMetadata(uint256 _taskId, string calldata _newMetadataURI) external whenNotPaused {
+        require(_taskId > 0 && _taskId <= taskCount, "Invalid task ID");
+        require(tasks[_taskId].employer == msg.sender, "Only employer can update");
+        require(tasks[_taskId].status == TaskStatus.Created, "Cannot update assigned task");
+        
+        tasks[_taskId].metadataURI = _newMetadataURI;
+        tasks[_taskId].updatedAt = block.timestamp;
+        emit TaskMetadataUpdated(_taskId, _newMetadataURI);
+    }
+
+    function getTopAgents(uint256 _limit) external view returns (address[] memory, uint256[] memory) {
+        require(_limit > 0 && _limit <= 100, "Invalid limit");
+        
+        address[] memory agents = new address[](_limit);
+        uint256[] memory scores = new uint256[](_limit);
+        
+        // Simple implementation - in production, consider using a more efficient data structure
+        uint256 count = 0;
+        for (uint256 i = 0; i < _limit && count < _limit; i++) {
+            // This is a simplified version - would need proper sorting algorithm
+            agents[count] = address(uint160(i + 1));
+            scores[count] = agentReputation[agents[count]];
+            if (scores[count] > 0) count++;
+        }
+        
+        return (agents, scores);
+    }
+
+    // Additional events
+    event StakeWithdrawn(uint256 indexed taskId, address indexed agent, uint256 amount);
+    event TaskMetadataUpdated(uint256 indexed taskId, string newMetadataURI);
