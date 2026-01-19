@@ -185,12 +185,21 @@ contract CognixMarket is ICognixMarket, ReentrancyGuard, Ownable, Pausable {
         
         if (_favorEmployer) {
             task.status = TaskStatus.Cancelled;
-            // Refund employer
+            // Refund employer (minus small arbitration fee)
+            uint256 arbitrationFee = task.reward / 100; // 1% arbitration fee
+            uint256 refund = task.reward - arbitrationFee;
+            
             if (task.token == address(0)) {
-                payable(task.employer).transfer(task.reward);
+                payable(task.employer).transfer(refund);
+                payable(arbitrator).transfer(arbitrationFee);
             } else {
-                IERC20(task.token).safeTransfer(task.employer, task.reward);
+                IERC20(task.token).safeTransfer(task.employer, refund);
+                IERC20(task.token).safeTransfer(arbitrator, arbitrationFee);
             }
+            
+            // Update agent stats for dispute loss
+            agentStats[task.assignee].updateStats(task.reward, false, true);
+            
             // Penalize agent reputation
             if (agentReputation[task.assignee] > task.reward / 1e15) {
                 agentReputation[task.assignee] -= task.reward / 1e15;
@@ -199,12 +208,21 @@ contract CognixMarket is ICognixMarket, ReentrancyGuard, Ownable, Pausable {
             }
         } else {
             task.status = TaskStatus.Completed;
-            // Pay agent
+            // Pay agent (minus arbitration fee)
+            uint256 arbitrationFee = task.reward / 100; // 1% arbitration fee
+            uint256 agentReward = task.reward - arbitrationFee;
+            
             if (task.token == address(0)) {
-                payable(task.assignee).transfer(task.reward);
+                payable(task.assignee).transfer(agentReward);
+                payable(arbitrator).transfer(arbitrationFee);
             } else {
-                IERC20(task.token).safeTransfer(task.assignee, task.reward);
+                IERC20(task.token).safeTransfer(task.assignee, agentReward);
+                IERC20(task.token).safeTransfer(arbitrator, arbitrationFee);
             }
+            
+            // Update agent stats for successful completion
+            agentStats[task.assignee].updateStats(task.reward, true, false);
+            
             // Reward agent reputation
             agentReputation[task.assignee] += task.reward / 1e15;
         }
