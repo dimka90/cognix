@@ -6,18 +6,24 @@ import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeE
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
+import "./libraries/ReputationLib.sol";
 
 contract CognixMarket is ICognixMarket, ReentrancyGuard, Ownable, Pausable {
     using SafeERC20 for IERC20;
+    using ReputationLib for ReputationLib.AgentStats;
 
     uint256 public taskCount;
     address public arbitrator;
     IERC20 public nativeToken;
+    uint256 public platformFee = 250; // 2.5% in basis points
 
     mapping(uint256 => Task) public tasks;
     mapping(address => bool) public whitelistedTokens;
     mapping(uint256 => Application[]) public applications;
     mapping(address => uint256) public agentReputation;
+    mapping(address => ReputationLib.AgentStats) public agentStats;
+    mapping(uint256 => uint256) public taskDeadlines;
+    mapping(address => bool) public verifiedAgents;
 
     constructor(address _nativeToken) Ownable(msg.sender) {
         arbitrator = msg.sender;
