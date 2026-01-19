@@ -324,3 +324,62 @@ contract CognixMarket is ICognixMarket, ReentrancyGuard, Ownable, Pausable {
     event AgentVerified(address indexed agent);
     event PlatformFeeUpdated(uint256 newFee);
     event DeadlineSet(uint256 indexed taskId, uint256 deadline);
+    function bulkAssignTasks(uint256[] calldata _taskIds, address[] calldata _assignees) external whenNotPaused {
+        require(_taskIds.length == _assignees.length, "Array length mismatch");
+        require(_taskIds.length <= 10, "Too many tasks"); // Prevent gas issues
+        
+        for (uint256 i = 0; i < _taskIds.length; i++) {
+            uint256 taskId = _taskIds[i];
+            address assignee = _assignees[i];
+            
+            require(taskId > 0 && taskId <= taskCount, "Invalid task ID");
+            require(tasks[taskId].employer == msg.sender, "Only employer can assign");
+            require(tasks[taskId].status == TaskStatus.Created, "Task not available");
+            require(assignee != address(0), "Invalid assignee");
+            
+            tasks[taskId].assignee = assignee;
+            tasks[taskId].status = TaskStatus.Assigned;
+            tasks[taskId].updatedAt = block.timestamp;
+            emit TaskAssigned(taskId, assignee);
+        }
+    }
+
+    function getTasksByStatus(TaskStatus _status) external view returns (uint256[] memory) {
+        uint256[] memory result = new uint256[](taskCount);
+        uint256 count = 0;
+        
+        for (uint256 i = 1; i <= taskCount; i++) {
+            if (tasks[i].status == _status) {
+                result[count] = i;
+                count++;
+            }
+        }
+        
+        // Resize array to actual count
+        uint256[] memory finalResult = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            finalResult[i] = result[i];
+        }
+        
+        return finalResult;
+    }
+
+    function getAgentTasks(address _agent) external view returns (uint256[] memory) {
+        uint256[] memory result = new uint256[](taskCount);
+        uint256 count = 0;
+        
+        for (uint256 i = 1; i <= taskCount; i++) {
+            if (tasks[i].assignee == _agent) {
+                result[count] = i;
+                count++;
+            }
+        }
+        
+        // Resize array
+        uint256[] memory finalResult = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            finalResult[i] = result[i];
+        }
+        
+        return finalResult;
+    }
