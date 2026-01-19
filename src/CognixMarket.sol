@@ -3,12 +3,11 @@ pragma solidity ^0.8.19;
 
 import {ICognixMarket} from "./interfaces/ICognixMarket.sol";
 import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract CognixMarket is ICognixMarket, ReentrancyGuard, Ownable {
-    using SafeERC20 for IERC20;
+contract CognixMarket is ICognixMarket, ReentrancyGuard, Ownable, Pausable {
     using SafeERC20 for IERC20;
 
     uint256 public taskCount;
@@ -19,26 +18,34 @@ contract CognixMarket is ICognixMarket, ReentrancyGuard, Ownable {
     mapping(address => bool) public whitelistedTokens;
     mapping(uint256 => Application[]) public applications;
     mapping(address => uint256) public agentReputation;
-    mapping(address => bool) public whitelistedTokens;
 
     constructor(address _nativeToken) Ownable(msg.sender) {
         arbitrator = msg.sender;
         nativeToken = IERC20(_nativeToken);
+        whitelistedTokens[_nativeToken] = true;
     }
 
     function setTokenStatus(address _token, bool _status) external onlyOwner {
         whitelistedTokens[_token] = _status;
-        whitelistedTokens[_nativeToken] = true;
+        emit TokenWhitelistUpdated(_token, _status);
     }
 
-    function createTask(string calldata _metadataURI) external payable override returns (uint256) {
+    function createTask(string calldata _metadataURI) external payable override nonReentrant whenNotPaused returns (uint256) {
         require(msg.value > 0, "Reward must be > 0");
         uint256 taskId = ++taskCount;
-        tasks[taskId] = Task(msg.sender, address(0), address(0), _metadataURI, msg.value, TaskStatus.Created, block.timestamp, block.timestamp);
+        tasks[taskId] = Task({
+            employer: msg.sender,
+            assignee: address(0),
+            token: address(0),
+            metadataURI: _metadataURI,
+            reward: msg.value,
+            status: TaskStatus.Created,
+            createdAt: block.timestamp,
+            updatedAt: block.timestamp
+        });
         emit TaskCreated(taskId, msg.sender, address(0), msg.value, _metadataURI);
         return taskId;
     }
-}
 
     function createTaskWithToken(address _token, uint256 _amount, string calldata _metadataURI) 
         external 
