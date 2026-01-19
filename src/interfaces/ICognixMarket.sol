@@ -36,3 +36,14 @@ interface ICognixMarket {
     function applyForTask(uint256 _taskId, uint256 _stakeAmount, string calldata _proposalURI) external;
     function assignTask(uint256 _taskId, address _assignee) external;
 }
+    // Additional functions for complete interface
+    function submitProof(uint256 _taskId, string calldata _proofURI) external;
+    function completeTask(uint256 _taskId) external;
+    function cancelTask(uint256 _taskId) external;
+    function raiseDispute(uint256 _taskId) external;
+    function resolveDispute(uint256 _taskId, bool _favorEmployer) external;
+    function setTokenStatus(address _token, bool _status) external;
+    function setArbitrator(address _newArbitrator) external;
+    function getTaskApplications(uint256 _taskId) external view returns (Application[] memory);
+    function getTaskCount() external view returns (uint256);
+}
