@@ -6,9 +6,23 @@ contract CognixToken {
     string public symbol;
     uint8 public constant decimals = 18;
     uint256 public totalSupply;
-    
-    constructor(string memory _name, string memory _symbol) {
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+
+    constructor(string memory _name, string memory _symbol, uint256 _supply, address _owner) {
         name = _name;
         symbol = _symbol;
+        totalSupply = _supply;
+        balanceOf[_owner] = _supply;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        require(balanceOf[msg.sender] >= amount, "Low balance");
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        emit Transfer(msg.sender, to, amount);
+        return true;
     }
 }
