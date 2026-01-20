@@ -1,10 +1,446 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-contract CognixMarket is Ownable {
-    constructor() Ownable(msg.sender) {}
-    function createTask(string calldata) external payable returns (uint256) {
-        return 1;
+import {ICognixMarket} from "./interfaces/ICognixMarket.sol";
+import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
+import "./libraries/ReputationLib.sol";
+
+contract CognixMarket is ICognixMarket, ReentrancyGuard, Ownable, Pausable {
+    using SafeERC20 for IERC20;
+    using ReputationLib for ReputationLib.AgentStats;
+
+    uint256 public taskCount;
+    address public arbitrator;
+    IERC20 public nativeToken;
+    uint256 public platformFee = 250; // 2.5% in basis points
+
+    mapping(uint256 => Task) public tasks;
+    mapping(address => bool) public whitelistedTokens;
+    mapping(uint256 => Application[]) public applications;
+    mapping(address => uint256) public agentReputation;
+    mapping(address => ReputationLib.AgentStats) public agentStats;
+    mapping(uint256 => uint256) public taskDeadlines;
+    mapping(address => bool) public verifiedAgents;
+
+    constructor(address _nativeToken) Ownable(msg.sender) {
+        arbitrator = msg.sender;
+        nativeToken = IERC20(_nativeToken);
+        whitelistedTokens[_nativeToken] = true;
+    }
+
+    function setTokenStatus(address _token, bool _status) external onlyOwner {
+        whitelistedTokens[_token] = _status;
+        emit TokenWhitelistUpdated(_token, _status);
+    }
+
+    function createTask(string calldata _metadataURI) external payable override nonReentrant whenNotPaused returns (uint256) {
+        require(msg.value > 0, "Reward must be > 0");
+        uint256 taskId = ++taskCount;
+        tasks[taskId] = Task({
+            employer: msg.sender,
+            assignee: address(0),
+            token: address(0),
+            metadataURI: _metadataURI,
+            reward: msg.value,
+            status: TaskStatus.Created,
+            createdAt: block.timestamp,
+            updatedAt: block.timestamp
+        });
+        emit TaskCreated(taskId, msg.sender, address(0), msg.value, _metadataURI);
+        return taskId;
+    }
+
+    function createTaskWithToken(address _token, uint256 _amount, string calldata _metadataURI) 
+        external 
+        override 
+        nonReentrant 
+        whenNotPaused 
+        returns (uint256) 
+    {
+        require(whitelistedTokens[_token], "Token not whitelisted");
+        require(_amount > 0, "Amount must be > 0");
+        IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
+        uint256 taskId = ++taskCount;
+        tasks[taskId] = Task({
+            employer: msg.sender,
+            assignee: address(0),
+            token: _token,
+            metadataURI: _metadataURI,
+            reward: _amount,
+            status: TaskStatus.Created,
+            createdAt: block.timestamp,
+            updatedAt: block.timestamp
+        });
+        emit TaskCreated(taskId, msg.sender, _token, _amount, _metadataURI);
+        return taskId;
+    }
+    function applyForTask(uint256 _taskId, uint256 _stakeAmount, string calldata _proposalURI) 
+        external 
+        override 
+        nonReentrant 
+        whenNotPaused 
+    {
+        require(_taskId > 0 && _taskId <= taskCount, "Invalid task ID");
+        require(tasks[_taskId].status == TaskStatus.Created, "Task not available");
+        
+        if (_stakeAmount > 0) {
+            nativeToken.safeTransferFrom(msg.sender, address(this), _stakeAmount);
+        }
+        applications[_taskId].push(Application({
+            agent: msg.sender,
+            proposalURI: _proposalURI,
+            stakedAmount: _stakeAmount,
+            appliedAt: block.timestamp
+        }));
+        emit TaskApplied(_taskId, msg.sender, _stakeAmount, _proposalURI);
+    }
+    function assignTask(uint256 _taskId, address _assignee) external override whenNotPaused {
+        require(_taskId > 0 && _taskId <= taskCount, "Invalid task ID");
+        require(tasks[_taskId].employer == msg.sender, "Only employer can assign");
+        require(tasks[_taskId].status == TaskStatus.Created, "Task not available for assignment");
+        require(_assignee != address(0), "Invalid assignee");
+        
+        tasks[_taskId].assignee = _assignee;
+        tasks[_taskId].status = TaskStatus.Assigned;
+        tasks[_taskId].updatedAt = block.timestamp;
+        emit TaskAssigned(_taskId, _assignee);
+    }
+
+    function submitProof(uint256 _taskId, string calldata _proofURI) external whenNotPaused {
+        require(_taskId > 0 && _taskId <= taskCount, "Invalid task ID");
+        require(tasks[_taskId].assignee == msg.sender, "Only assignee can submit proof");
+        require(tasks[_taskId].status == TaskStatus.Assigned, "Task not assigned");
+        
+        tasks[_taskId].status = TaskStatus.ProofSubmitted;
+        tasks[_taskId].updatedAt = block.timestamp;
+        emit ProofSubmitted(_taskId, _proofURI);
+    }
+    function completeTask(uint256 _taskId) external nonReentrant whenNotPaused {
+        require(_taskId > 0 && _taskId <= taskCount, "Invalid task ID");
+        require(tasks[_taskId].employer == msg.sender, "Only employer can complete");
+        require(tasks[_taskId].status == TaskStatus.ProofSubmitted, "Proof not submitted");
+        
+        Task storage task = tasks[_taskId];
+        task.status = TaskStatus.Completed;
+        task.updatedAt = block.timestamp;
+        
+        // Calculate platform fee
+        uint256 fee = (task.reward * platformFee) / 10000;
+        uint256 agentReward = task.reward - fee;
+        
+        // Transfer reward to assignee
+        if (task.token == address(0)) {
+            payable(task.assignee).transfer(agentReward);
+            if (fee > 0) payable(owner()).transfer(fee);
+        } else {
+            IERC20(task.token).safeTransfer(task.assignee, agentReward);
+            if (fee > 0) IERC20(task.token).safeTransfer(owner(), fee);
+        }
+        
+        // Update reputation using library
+        agentStats[task.assignee].updateStats(task.reward, true, false);
+        agentReputation[task.assignee] += task.reward / 1e15; // Weighted by task value
+        
+        emit TaskCompleted(_taskId);
+    }
+
+    function cancelTask(uint256 _taskId) external nonReentrant whenNotPaused {
+        require(_taskId > 0 && _taskId <= taskCount, "Invalid task ID");
+        require(tasks[_taskId].employer == msg.sender, "Only employer can cancel");
+        require(tasks[_taskId].status == TaskStatus.Created || tasks[_taskId].status == TaskStatus.Assigned, "Cannot cancel task");
+        
+        Task storage task = tasks[_taskId];
+        task.status = TaskStatus.Cancelled;
+        task.updatedAt = block.timestamp;
+        
+        // Refund employer
+        if (task.token == address(0)) {
+            payable(task.employer).transfer(task.reward);
+        } else {
+            IERC20(task.token).safeTransfer(task.employer, task.reward);
+        }
+        
+        emit TaskCancelled(_taskId);
+    }
+    function raiseDispute(uint256 _taskId) external whenNotPaused {
+        require(_taskId > 0 && _taskId <= taskCount, "Invalid task ID");
+        require(tasks[_taskId].status == TaskStatus.ProofSubmitted, "No proof to dispute");
+        require(tasks[_taskId].employer == msg.sender || tasks[_taskId].assignee == msg.sender, "Not authorized");
+        
+        tasks[_taskId].status = TaskStatus.Disputed;
+        tasks[_taskId].updatedAt = block.timestamp;
+        emit DisputeRaised(_taskId, msg.sender);
+    }
+
+    function resolveDispute(uint256 _taskId, bool _favorEmployer) external whenNotPaused {
+        require(msg.sender == arbitrator, "Only arbitrator can resolve");
+        require(_taskId > 0 && _taskId <= taskCount, "Invalid task ID");
+        require(tasks[_taskId].status == TaskStatus.Disputed, "Task not disputed");
+        
+        Task storage task = tasks[_taskId];
+        task.updatedAt = block.timestamp;
+        
+        if (_favorEmployer) {
+            task.status = TaskStatus.Cancelled;
+            // Refund employer (minus small arbitration fee)
+            uint256 arbitrationFee = task.reward / 100; // 1% arbitration fee
+            uint256 refund = task.reward - arbitrationFee;
+            
+            if (task.token == address(0)) {
+                payable(task.employer).transfer(refund);
+                payable(arbitrator).transfer(arbitrationFee);
+            } else {
+                IERC20(task.token).safeTransfer(task.employer, refund);
+                IERC20(task.token).safeTransfer(arbitrator, arbitrationFee);
+            }
+            
+            // Update agent stats for dispute loss
+            agentStats[task.assignee].updateStats(task.reward, false, true);
+            
+            // Penalize agent reputation
+            if (agentReputation[task.assignee] > task.reward / 1e15) {
+                agentReputation[task.assignee] -= task.reward / 1e15;
+            } else {
+                agentReputation[task.assignee] = 0;
+            }
+        } else {
+            task.status = TaskStatus.Completed;
+            // Pay agent (minus arbitration fee)
+            uint256 arbitrationFee = task.reward / 100; // 1% arbitration fee
+            uint256 agentReward = task.reward - arbitrationFee;
+            
+            if (task.token == address(0)) {
+                payable(task.assignee).transfer(agentReward);
+                payable(arbitrator).transfer(arbitrationFee);
+            } else {
+                IERC20(task.token).safeTransfer(task.assignee, agentReward);
+                IERC20(task.token).safeTransfer(arbitrator, arbitrationFee);
+            }
+            
+            // Update agent stats for successful completion
+            agentStats[task.assignee].updateStats(task.reward, true, false);
+            
+            // Reward agent reputation
+            agentReputation[task.assignee] += task.reward / 1e15;
+        }
+        
+        emit DisputeResolved(_taskId, !_favorEmployer);
+    }
+    function setArbitrator(address _newArbitrator) external onlyOwner {
+        require(_newArbitrator != address(0), "Invalid arbitrator");
+        arbitrator = _newArbitrator;
+        emit ArbitratorUpdated(_newArbitrator);
+    }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
+    function emergencyWithdraw(address _token, uint256 _amount) external onlyOwner {
+        require(_amount > 0, "Amount must be > 0");
+        if (_token == address(0)) {
+            payable(owner()).transfer(_amount);
+        } else {
+            IERC20(_token).safeTransfer(owner(), _amount);
+        }
+        emit EmergencyWithdraw(_token, _amount);
+    }
+
+    function getTaskApplications(uint256 _taskId) external view returns (Application[] memory) {
+        return applications[_taskId];
+    }
+
+    function getTaskCount() external view returns (uint256) {
+        return taskCount;
+    }
+
+    // Events for new functionality
+    event TokenWhitelistUpdated(address indexed token, bool status);
+    event ArbitratorUpdated(address indexed newArbitrator);
+    event EmergencyWithdraw(address indexed token, uint256 amount);
+    // Additional events for V2 features
+    event AgentVerified(address indexed agent);
+    event PlatformFeeUpdated(uint256 newFee);
+    event DeadlineSet(uint256 indexed taskId, uint256 deadline);
+    event StakeWithdrawn(uint256 indexed taskId, address indexed agent, uint256 amount);
+    event TaskMetadataUpdated(uint256 indexed taskId, string newMetadataURI);
+
+    event DeadlineExtended(uint256 indexed taskId, uint256 newDeadline);
+    uint256 public constant DEADLINE_EXTENSION = 7 days;
+
+    function createTaskWithDeadline(
+        string calldata _metadataURI,
+        uint256 _deadline
+    ) external payable nonReentrant whenNotPaused returns (uint256) {
+        require(msg.value > 0, "Reward must be > 0");
+        require(_deadline > block.timestamp, "Invalid deadline");
+        
+        uint256 taskId = ++taskCount;
+        tasks[taskId] = Task({
+            employer: msg.sender,
+            assignee: address(0),
+            token: address(0),
+            metadataURI: _metadataURI,
+            reward: msg.value,
+            status: TaskStatus.Created,
+            createdAt: block.timestamp,
+            updatedAt: block.timestamp
+        });
+        
+        taskDeadlines[taskId] = _deadline;
+        emit TaskCreated(taskId, msg.sender, address(0), msg.value, _metadataURI);
+        return taskId;
+    }
+
+    function extendDeadline(uint256 _taskId) external {
+        require(tasks[_taskId].employer == msg.sender, "Only employer");
+        require(taskDeadlines[_taskId] > 0, "No deadline set");
+        taskDeadlines[_taskId] += DEADLINE_EXTENSION;
+        emit DeadlineExtended(_taskId, taskDeadlines[_taskId]);
+    }
+
+    function verifyAgent(address _agent) external onlyOwner {
+        verifiedAgents[_agent] = true;
+        emit AgentVerified(_agent);
+    }
+
+    function setPlatformFee(uint256 _fee) external onlyOwner {
+        require(_fee <= 1000, "Fee too high"); // Max 10%
+        platformFee = _fee;
+        emit PlatformFeeUpdated(_fee);
+    }
+
+    function getAgentStats(address _agent) external view returns (
+        uint256 totalTasks,
+        uint256 completedTasks,
+        uint256 disputedTasks,
+        uint256 totalEarned,
+        uint256 score,
+        uint256 successRate
+    ) {
+        ReputationLib.AgentStats storage stats = agentStats[_agent];
+        return (
+            stats.totalTasks,
+            stats.completedTasks,
+            stats.disputedTasks,
+            stats.totalEarned,
+            stats.score,
+            stats.getSuccessRate()
+        );
+    }
+
+    function bulkAssignTasks(uint256[] calldata _taskIds, address[] calldata _assignees) external whenNotPaused {
+        require(_taskIds.length == _assignees.length, "Array length mismatch");
+        require(_taskIds.length <= 10, "Too many tasks"); // Prevent gas issues
+        
+        for (uint256 i = 0; i < _taskIds.length; i++) {
+            uint256 taskId = _taskIds[i];
+            address assignee = _assignees[i];
+            
+            require(taskId > 0 && taskId <= taskCount, "Invalid task ID");
+            require(tasks[taskId].employer == msg.sender, "Only employer can assign");
+            require(tasks[taskId].status == TaskStatus.Created, "Task not available");
+            require(assignee != address(0), "Invalid assignee");
+            
+            tasks[taskId].assignee = assignee;
+            tasks[taskId].status = TaskStatus.Assigned;
+            tasks[taskId].updatedAt = block.timestamp;
+            emit TaskAssigned(taskId, assignee);
+        }
+    }
+
+    function getTasksByStatus(TaskStatus _status) external view returns (uint256[] memory) {
+        uint256[] memory result = new uint256[](taskCount);
+        uint256 count = 0;
+        
+        for (uint256 i = 1; i <= taskCount; i++) {
+            if (tasks[i].status == _status) {
+                result[count] = i;
+                count++;
+            }
+        }
+        
+        // Resize array to actual count
+        uint256[] memory finalResult = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            finalResult[i] = result[i];
+        }
+        
+        return finalResult;
+    }
+
+    function getAgentTasks(address _agent) external view returns (uint256[] memory) {
+        uint256[] memory result = new uint256[](taskCount);
+        uint256 count = 0;
+        
+        for (uint256 i = 1; i <= taskCount; i++) {
+            if (tasks[i].assignee == _agent) {
+                result[count] = i;
+                count++;
+            }
+        }
+        
+        // Resize array
+        uint256[] memory finalResult = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            finalResult[i] = result[i];
+        }
+        
+        return finalResult;
+    }
+    function withdrawStake(uint256 _taskId) external nonReentrant whenNotPaused {
+        require(_taskId > 0 && _taskId <= taskCount, "Invalid task ID");
+        Task storage task = tasks[_taskId];
+        require(task.status == TaskStatus.Cancelled || task.status == TaskStatus.Completed, "Task not finished");
+        
+        Application[] storage apps = applications[_taskId];
+        uint256 stakeToReturn = 0;
+        
+        for (uint256 i = 0; i < apps.length; i++) {
+            if (apps[i].agent == msg.sender && apps[i].stakedAmount > 0) {
+                stakeToReturn = apps[i].stakedAmount;
+                apps[i].stakedAmount = 0; // Prevent double withdrawal
+                break;
+            }
+        }
+        
+        require(stakeToReturn > 0, "No stake to withdraw");
+        nativeToken.safeTransfer(msg.sender, stakeToReturn);
+        emit StakeWithdrawn(_taskId, msg.sender, stakeToReturn);
+    }
+
+    function updateTaskMetadata(uint256 _taskId, string calldata _newMetadataURI) external whenNotPaused {
+        require(_taskId > 0 && _taskId <= taskCount, "Invalid task ID");
+        require(tasks[_taskId].employer == msg.sender, "Only employer can update");
+        require(tasks[_taskId].status == TaskStatus.Created, "Cannot update assigned task");
+        
+        tasks[_taskId].metadataURI = _newMetadataURI;
+        tasks[_taskId].updatedAt = block.timestamp;
+        emit TaskMetadataUpdated(_taskId, _newMetadataURI);
+    }
+
+    function getTopAgents(uint256 _limit) external view returns (address[] memory, uint256[] memory) {
+        require(_limit > 0 && _limit <= 100, "Invalid limit");
+        
+        address[] memory agents = new address[](_limit);
+        uint256[] memory scores = new uint256[](_limit);
+        
+        // Simple implementation - in production, consider using a more efficient data structure
+        uint256 count = 0;
+        for (uint256 i = 0; i < _limit && count < _limit; i++) {
+            // This is a simplified version - would need proper sorting algorithm
+            agents[count] = address(uint160(i + 1));
+            scores[count] = agentReputation[agents[count]];
+            if (scores[count] > 0) count++;
+        }
+        
+        return (agents, scores);
     }
 }
